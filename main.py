@@ -5,29 +5,26 @@ import os
 
 app = FastAPI()
 
-# -----------------------------
-# 🔐  CORS Configuration
-# -----------------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # For prod, limit to your frontend domain
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# -----------------------------
-# 🔧  Airtable Setup
-# -----------------------------
 AIRTABLE_API_KEY = os.getenv("AIRTABLE_API_KEY")
-AIRTABLE_BASE_ID = os.getenv("AIRTABLE_BASE_ID")  # e.g. "appXXXXXXXXXXXXXX"
-AIRTABLE_TABLE_ID = os.getenv("AIRTABLE_TABLE_ID")  # e.g. "tblXXXXXXXXXXXXXX"
+AIRTABLE_BASE_ID = os.getenv("AIRTABLE_BASE_ID")
+AIRTABLE_TABLE_ID = os.getenv("AIRTABLE_TABLE_ID")
+
+print("🔍 DEBUG ENV:", {
+    "AIRTABLE_API_KEY": AIRTABLE_API_KEY[:5] + "...",
+    "AIRTABLE_BASE_ID": AIRTABLE_BASE_ID,
+    "AIRTABLE_TABLE_ID": AIRTABLE_TABLE_ID,
+})
 
 api = Api(AIRTABLE_API_KEY)
 
-# -----------------------------
-# 🌐  Routes
-# -----------------------------
 @app.get("/")
 def home():
     return {"status": "ok", "message": "Backend running"}
@@ -41,10 +38,13 @@ async def update_airtable(request: Request):
         if not record_data:
             return {"error": "No record data provided"}
 
-        # ✅ FIX: Use table *ID*, not name
-        table = api.table(AIRTABLE_BASE_ID, AIRTABLE_TABLE_ID)
+        # Make sure both IDs exist
+        if not AIRTABLE_BASE_ID or not AIRTABLE_TABLE_ID:
+            raise ValueError("Missing Airtable environment variables")
 
+        table = api.table(AIRTABLE_BASE_ID, AIRTABLE_TABLE_ID)
         created_record = table.create(record_data)
+
         return {"status": "success", "record": created_record}
 
     except Exception as e:
