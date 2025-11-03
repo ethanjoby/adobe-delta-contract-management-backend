@@ -1,13 +1,9 @@
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
 import os
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
 from datetime import datetime
 
-app = FastAPI()
-
-TEMPLATE_FILE = "templates/regContract.txt"   # always use regular template
+TEMPLATE_FILE = "templates/regContract.txt"   # always use the regular contract for now
 
 def load_template() -> str:
     with open(TEMPLATE_FILE, "r") as f:
@@ -29,6 +25,13 @@ def generate_pdf(text: str, output_path: str):
     doc.build(content)
 
 def generate_contract(fields: dict) -> str:
+    """
+    Generates contract PDF using regContract template
+    Required fields in dict:
+    contractor_name, signer_name, relationship_to_vendor,
+    address, email, vendor_account, service, amount, due_date, end_date
+    """
+
     template = load_template()
     filled_text = fill_template(template, fields)
 
@@ -45,33 +48,20 @@ def generate_contract(fields: dict) -> str:
     return output_path
 
 
-@app.post("/generate-contract")
-async def create_contract(request: Request):
+# Example local test
+if __name__ == "__main__":
+    data = {
+        "contractor_name": "Kody Alexander Lambourne",
+        "signer_name": "",
+        "relationship_to_vendor": "",
+        "address": "3406 Duval St Unit B Austin TX 78705",
+        "email": "contact.bykody@gmail.com",
+        "vendor_account": "Needed",
+        "service": "Video Promotion",
+        "amount": "15000",
+        "due_date": "October 30, 2025",
+        "end_date": "October 30, 2025"
+    }
 
-    try:
-        data = await request.json()
-        record = data.get("record")
-
-        if not record:
-            return JSONResponse({"error": "No record data provided"}, status_code=400)
-
-        required_fields = [
-            "contractor_name", "signer_name", "relationship_to_vendor",
-            "address", "email", "vendor_account",
-            "service", "amount", "due_date", "end_date"
-        ]
-
-        missing = [f for f in required_fields if f not in record]
-        if missing:
-            return JSONResponse(
-                {"error": f"Missing required fields: {', '.join(missing)}"},
-                status_code=400
-            )
-
-        pdf_path = generate_contract(record)
-
-        return {"status": "success", "file_path": pdf_path}
-
-    except Exception as e:
-        print("❌ Error generating contract:", e)
-        return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
+    path = generate_contract(data)
+    print(f"✅ Contract generated at: {path}")
