@@ -37,29 +37,13 @@ def home():
 
 # ============= CREATE CONTRACT =============
 
-@app.post("/generate-contract")
-async def create_contract(request: Request):
-    try:
-        data = await request.json()
-        record = data.get("record")
-
-        if not record:
-            return {"error": "No record data provided"}
-
-        pdf_path = generate_contract(record)
-        return {"status": "success", "file_path": pdf_path}
-
-    except Exception as e:
-        print("❌ Error generating contract:", e)
-        return {"status": "error", "message": str(e)}
-
-
-# ============= INVOICE FLOW (2 table logic) =============
-
 @app.post("/invoice")
 async def process_invoice(request: Request):
     try:
+        print("📌 /invoice endpoint HIT")
+
         data = await request.json()
+        print("📨 Incoming payload:", data)
 
         paymentName   = data.get("paymentName")
         invoiceDate   = data.get("invoiceDate")
@@ -67,9 +51,10 @@ async def process_invoice(request: Request):
         totalPayment  = data.get("totalPayment")
         purchaseOrder = data.get("purchaseOrder")
         email         = data.get("email")
-        invoicePdfUrl = data.get("invoicePdfUrl")  # already uploaded by FE
+        invoicePdfUrl = data.get("invoicePdfUrl")
 
         # ---------- TABLE 1 INSERT ----------
+        print("➡️ inserting into Airtable1 (freelancer table)...")
         t1 = api.table(AIRTABLE_BASE_1, AIRTABLE_TABLE_1)
         r1 = t1.create({
             "Payment Name":    paymentName,
@@ -78,17 +63,24 @@ async def process_invoice(request: Request):
             "Total Payment":   totalPayment,
             "Purchase Orders": purchaseOrder
         })
+        print("✅ Airtable1 insert OK:", r1)
 
         # ---------- TABLE 2 UPDATE ----------
+        print(f"🔎 searching Airtable2 for email: {email}")
         t2 = api.table(AIRTABLE_BASE_2, AIRTABLE_TABLE_2)
         matches = t2.all(formula=f"{{Email (from…)}} = '{email}'")
+        print("🔍 matches:", matches)
 
         if matches:
             rid = matches[0]["id"]
+            print("✏️ updating Airtable2 record:", rid)
             t2.update(rid, {
                 "Status": "Payment requested",
                 "Invoice": [{"url": invoicePdfUrl}]
             })
+            print("✅ Airtable2 update done")
+
+        print("🎉 /invoice COMPLETED")
 
         return {
             "ok": True,
