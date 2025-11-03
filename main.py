@@ -68,8 +68,9 @@ async def process_invoice(request: Request):
         # ---------- TABLE 2 UPDATE ----------
         print(f"🔎 searching Airtable2 for email: {email}")
         t2 = api.table(AIRTABLE_BASE_2, AIRTABLE_TABLE_2)
-        matches = t2.all(formula=f"{{Email (from…)}} = '{email}'")
+        matches = t2.all(formula=f"{{Email (from Community Member)}} = '{email}'")
         print("🔍 matches:", matches)
+
 
         if matches:
             rid = matches[0]["id"]
