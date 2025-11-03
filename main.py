@@ -27,6 +27,9 @@ AIRTABLE_TABLE_1 = os.getenv("AIRTABLE_TABLE_1") # tbluk07EG1FpjE6bR
 AIRTABLE_BASE_2  = os.getenv("AIRTABLE_BASE_2")  # app7924YTWUI9YhMK
 AIRTABLE_TABLE_2 = os.getenv("AIRTABLE_TABLE_2") # tbl5Tl74DBlHg2805
 
+# table 3 = Purchase Orders (Balance reduce)
+AIRTABLE_TABLE_3 = os.getenv("AIRTABLE_TABLE_3")  # tblraarK4k6ygw8hk
+
 api = Api(AIRTABLE_API_KEY)
 
 
@@ -36,7 +39,25 @@ def home():
 
 
 # ============= CREATE CONTRACT =============
+@app.post("/generate-contract")
+async def create_contract(request: Request):
+    try:
+        data = await request.json()
+        record = data.get("record")
 
+        if not record:
+            return {"error": "No record data provided"}
+
+        # Generate contract PDF
+        pdf_path = generate_contract(record)
+
+        return {"status": "success", "file_path": pdf_path}
+
+    except Exception as e:
+        print("❌ Error generating contract:", e)
+        return {"status": "error", "message": str(e)}
+    
+# ============= INVOICE FLOW (3 table logic now) =============
 @app.post("/invoice")
 async def process_invoice(request: Request):
     try:
@@ -71,7 +92,6 @@ async def process_invoice(request: Request):
         matches = t2.all(formula=f"{{Email (from Community Member)}} = '{email}'")
         print("🔍 matches:", matches)
 
-
         if matches:
             rid = matches[0]["id"]
             print("✏️ updating Airtable2 record:", rid)
@@ -81,12 +101,34 @@ async def process_invoice(request: Request):
             })
             print("✅ Airtable2 update done")
 
+        # ---------- TABLE 3 BALANCE SUBTRACT ----------
+        print(f"🔎 searching Airtable3 for purchaseOrder: {purchaseOrder}")
+        t3 = api.table(AIRTABLE_BASE_1, AIRTABLE_TABLE_3)
+        po_matches = t3.all(formula=f"{{Orders}} = '{purchaseOrder}'")
+        print("🔍 PO matches:", po_matches)
+
+        if po_matches:
+            po_id = po_matches[0]["id"]
+            po_rec = po_matches[0]["fields"]
+            current_balance = po_rec.get("Balance", 0)
+
+            new_balance = current_balance - totalPayment
+            if new_balance < 0: new_balance = 0
+
+            print(f"✏️ updating Airtable3 Balance: {current_balance} -> {new_balance}")
+
+            t3.update(po_id, {
+                "Balance": new_balance
+            })
+            print("✅ Airtable3 Balance updated")
+
         print("🎉 /invoice COMPLETED")
 
         return {
             "ok": True,
             "airtable1_created": r1,
-            "airtable2_updated_records": len(matches)
+            "airtable2_updated_records": len(matches),
+            "airtable3_balance_updated": len(po_matches)
         }
 
     except Exception as e:
