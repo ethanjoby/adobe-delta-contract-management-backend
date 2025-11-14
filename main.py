@@ -1,11 +1,20 @@
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-from pyairtable import Api
 import os
 
-from contract import generate_contract
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from pyairtable import Api
+
+from contract import GENERATED_CONTRACTS_DIR, generate_contract
 
 app = FastAPI()
+
+app.mount(
+    "/generated_contracts",
+    StaticFiles(directory=GENERATED_CONTRACTS_DIR),
+    name="generated_contracts",
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -50,12 +59,26 @@ async def create_contract(request: Request):
 
         # Generate contract PDF
         pdf_path = generate_contract(record)
+        contractor = record.get("contractor_name", "Unknown contractor")
+        print(f"✅ Contract generated for {contractor}: {pdf_path}")
 
         return {"status": "success", "file_path": pdf_path}
 
     except Exception as e:
         print("❌ Error generating contract:", e)
         return {"status": "error", "message": str(e)}
+
+
+@app.get("/download-contract")
+async def download_contract(filename: str):
+    file_path = os.path.join(GENERATED_CONTRACTS_DIR, filename)
+
+    if not os.path.exists(file_path):
+        print(f"⚠️ Contract download failed (not found): {filename}")
+        raise HTTPException(status_code=404, detail="Contract not found")
+
+    print(f"📄 Serving contract download: {file_path}")
+    return FileResponse(file_path, media_type="application/pdf", filename=filename)
     
 # ============= INVOICE FLOW (3 table logic now) =============
 @app.post("/invoice")

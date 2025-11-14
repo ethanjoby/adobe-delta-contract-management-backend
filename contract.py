@@ -1,9 +1,14 @@
 import os
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet
 from datetime import datetime
 
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet
+
 TEMPLATE_FILE = "templates/regContract.txt"   # always use the regular contract for now
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+GENERATED_CONTRACTS_DIR = os.path.join(BASE_DIR, "generated_contracts")
+
+os.makedirs(GENERATED_CONTRACTS_DIR, exist_ok=True)
 
 def load_template() -> str:
     with open(TEMPLATE_FILE, "r") as f:
@@ -38,10 +43,7 @@ def generate_contract(fields: dict) -> str:
     safe_name = fields["contractor_name"].replace(" ", "_")
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"contract_{safe_name}_{timestamp}.pdf"
-    output_dir = "generated_contracts"
-
-    os.makedirs(output_dir, exist_ok=True)
-    output_path = os.path.join(output_dir, filename)
+    output_path = os.path.join(GENERATED_CONTRACTS_DIR, filename)
 
     generate_pdf(filled_text, output_path)
 
