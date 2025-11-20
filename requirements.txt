@@ -4,6 +4,9 @@ certifi==2025.10.5
 charset-normalizer==3.4.3
 click==8.3.0
 fastapi==0.119.0
+google-api-python-client==2.151.0
+google-auth==2.37.0
+google-auth-httplib2==0.2.0
 h11==0.16.0
 idna==3.11
 inflection==0.5.1

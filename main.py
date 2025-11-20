@@ -1,9 +1,14 @@
 import os
+import uuid
+import requests
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
 from pyairtable import Api
 
 from contract import GENERATED_CONTRACTS_DIR, generate_contract
@@ -29,17 +34,96 @@ app.add_middleware(
 AIRTABLE_API_KEY = os.getenv("AIRTABLE_API_KEY")
 
 # table 1 = Dummy Adobe Freelancer Payments
-AIRTABLE_BASE_1  = os.getenv("AIRTABLE_BASE_1")  # appigIP8l8Iqr054x
-AIRTABLE_TABLE_1 = os.getenv("AIRTABLE_TABLE_1") # tbluk07EG1FpjE6bR
+AIRTABLE_BASE_1  = os.getenv("AIRTABLE_BASE_1")
+AIRTABLE_TABLE_1 = os.getenv("AIRTABLE_TABLE_1")
 
 # table 2 = Dummy Community Leaders Data
-AIRTABLE_BASE_2  = os.getenv("AIRTABLE_BASE_2")  # app7924YTWUI9YhMK
-AIRTABLE_TABLE_2 = os.getenv("AIRTABLE_TABLE_2") # tbl5Tl74DBlHg2805
+AIRTABLE_BASE_2  = os.getenv("AIRTABLE_BASE_2")
+AIRTABLE_TABLE_2 = os.getenv("AIRTABLE_TABLE_2")
 
 # table 3 = Purchase Orders (Balance reduce)
-AIRTABLE_TABLE_3 = os.getenv("AIRTABLE_TABLE_3")  # tblraarK4k6ygw8hk
+AIRTABLE_TABLE_3 = os.getenv("AIRTABLE_TABLE_3")
+
+# Google Drive upload config
+DRIVE_FOLDER_ID = os.getenv("GDRIVE_FOLDER_ID", "1eKDgZvxW8lecck_CiqdDWVWOmiZjFNry")
+SERVICE_ACCOUNT_JSON_RAW = os.getenv("GDRIVE_SERVICE_ACCOUNT_JSON")
+
+# Path where JSON will be written
+SERVICE_ACCOUNT_PATH = "/tmp/gdrive_service_account.json"
+
+# Write JSON env content → real file
+if SERVICE_ACCOUNT_JSON_RAW:
+    try:
+        with open(SERVICE_ACCOUNT_PATH, "w") as f:
+            f.write(SERVICE_ACCOUNT_JSON_RAW)
+        print("📄 Service account JSON written to /tmp/gdrive_service_account.json")
+    except Exception as e:
+        print("❌ Failed to write service account JSON:", e)
+else:
+    print("⚠️ No GDRIVE_SERVICE_ACCOUNT_JSON env variable found — Drive upload disabled")
+
 
 api = Api(AIRTABLE_API_KEY)
+
+# ============= GOOGLE DRIVE HELPERS =============
+def get_drive_client():
+    if not os.path.exists(SERVICE_ACCOUNT_PATH):
+        print("⚠️ Skipping Drive upload: service account file missing")
+        return None
+
+    try:
+        scopes = ["https://www.googleapis.com/auth/drive.file"]
+        creds = service_account.Credentials.from_service_account_file(
+            SERVICE_ACCOUNT_PATH, scopes=scopes
+        )
+        return build("drive", "v3", credentials=creds)
+    except Exception as e:
+        print(f"❌ Failed to create Drive client: {e}")
+        return None
+
+
+def upload_pdf_to_drive(pdf_path: str, folder_id: str = DRIVE_FOLDER_ID):
+    drive = get_drive_client()
+    if not drive:
+        return None
+
+    if not os.path.exists(pdf_path):
+        print(f"⚠️ File not found, skipping Drive upload: {pdf_path}")
+        return None
+
+    metadata = {"name": os.path.basename(pdf_path), "parents": [folder_id]}
+    media = MediaFileUpload(pdf_path, mimetype="application/pdf")
+
+    try:
+        file = (
+            drive.files()
+            .create(body=metadata, media_body=media, fields="id, webViewLink")
+            .execute()
+        )
+        print(f"☁️ Uploaded to Drive: {file}")
+        return file
+    except Exception as e:
+        print(f"❌ Drive upload failed: {e}")
+        return None
+
+
+def download_temp_pdf(url: str):
+    """
+    Downloads the invoice PDF to /tmp and returns its filepath.
+    """
+    try:
+        resp = requests.get(url)
+        resp.raise_for_status()
+
+        tmp_path = f"/tmp/{uuid.uuid4()}.pdf"
+        with open(tmp_path, "wb") as f:
+            f.write(resp.content)
+
+        print(f"⬇️ Downloaded temporary PDF: {tmp_path}")
+        return tmp_path
+    except Exception as e:
+        print(f"❌ Failed to download invoice PDF: {e}")
+        return None
 
 
 @app.get("/")
@@ -57,12 +141,17 @@ async def create_contract(request: Request):
         if not record:
             return {"error": "No record data provided"}
 
-        # Generate contract PDF
         pdf_path = generate_contract(record)
         contractor = record.get("contractor_name", "Unknown contractor")
         print(f"✅ Contract generated for {contractor}: {pdf_path}")
 
-        return {"status": "success", "file_path": pdf_path}
+        drive_file = upload_pdf_to_drive(pdf_path)
+
+        return {
+            "status": "success",
+            "file_path": pdf_path,
+            "drive_file": drive_file,
+        }
 
     except Exception as e:
         print("❌ Error generating contract:", e)
@@ -74,13 +163,14 @@ async def download_contract(filename: str):
     file_path = os.path.join(GENERATED_CONTRACTS_DIR, filename)
 
     if not os.path.exists(file_path):
-        print(f"⚠️ Contract download failed (not found): {filename}")
+        print(f"⚠️ Contract not found: {filename}")
         raise HTTPException(status_code=404, detail="Contract not found")
 
     print(f"📄 Serving contract download: {file_path}")
     return FileResponse(file_path, media_type="application/pdf", filename=filename)
-    
-# ============= INVOICE FLOW (3 table logic now) =============
+
+
+# ============= INVOICE FLOW =============
 @app.post("/invoice")
 async def process_invoice(request: Request):
     try:
@@ -98,7 +188,7 @@ async def process_invoice(request: Request):
         invoicePdfUrl = data.get("invoicePdfUrl")
 
         # ---------- TABLE 1 INSERT ----------
-        print("➡️ inserting into Airtable1 (freelancer table)...")
+        print("➡️ inserting into Airtable1...")
         t1 = api.table(AIRTABLE_BASE_1, AIRTABLE_TABLE_1)
         r1 = t1.create({
             "Payment Name":    paymentName,
@@ -136,14 +226,23 @@ async def process_invoice(request: Request):
             current_balance = po_rec.get("Balance", 0)
 
             new_balance = current_balance - totalPayment
-            if new_balance < 0: new_balance = 0
+            if new_balance < 0:
+                new_balance = 0
 
             print(f"✏️ updating Airtable3 Balance: {current_balance} -> {new_balance}")
-
-            t3.update(po_id, {
-                "Balance": new_balance
-            })
+            t3.update(po_id, {"Balance": new_balance})
             print("✅ Airtable3 Balance updated")
+
+        # ---------- GOOGLE DRIVE UPLOAD OF INVOICE PDF ----------
+        drive_upload_file = None
+
+        if invoicePdfUrl:
+            print(f"⬇️ Downloading invoice PDF for Drive upload: {invoicePdfUrl}")
+            temp_pdf = download_temp_pdf(invoicePdfUrl)
+
+            if temp_pdf:
+                print(f"☁️ Uploading invoice PDF to Google Drive: {temp_pdf}")
+                drive_upload_file = upload_pdf_to_drive(temp_pdf)
 
         print("🎉 /invoice COMPLETED")
 
@@ -151,7 +250,8 @@ async def process_invoice(request: Request):
             "ok": True,
             "airtable1_created": r1,
             "airtable2_updated_records": len(matches),
-            "airtable3_balance_updated": len(po_matches)
+            "airtable3_balance_updated": len(po_matches),
+            "drive_file": drive_upload_file,
         }
 
     except Exception as e:
