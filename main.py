@@ -1,14 +1,17 @@
 import os
 import uuid
+import json
 import requests
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from google.oauth2 import service_account
+
+from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
+
 from pyairtable import Api
 
 from contract import GENERATED_CONTRACTS_DIR, generate_contract
@@ -44,45 +47,41 @@ AIRTABLE_TABLE_2 = os.getenv("AIRTABLE_TABLE_2")
 # table 3 = Purchase Orders (Balance reduce)
 AIRTABLE_TABLE_3 = os.getenv("AIRTABLE_TABLE_3")
 
-# Google Drive upload config
+# Google Drive OAuth config
 DRIVE_FOLDER_ID = os.getenv("GDRIVE_FOLDER_ID", "1eKDgZvxW8lecck_CiqdDWVWOmiZjFNry")
-SERVICE_ACCOUNT_JSON_RAW = os.getenv("GDRIVE_SERVICE_ACCOUNT_JSON")
+OAUTH_TOKEN_JSON = os.getenv("GDRIVE_OAUTH_TOKEN_JSON")  # contents of token.json
 
-# Path where JSON will be written
-SERVICE_ACCOUNT_PATH = "/tmp/gdrive_service_account.json"
-
-# Write JSON env content → real file
-if SERVICE_ACCOUNT_JSON_RAW:
-    try:
-        with open(SERVICE_ACCOUNT_PATH, "w") as f:
-            f.write(SERVICE_ACCOUNT_JSON_RAW)
-        print("📄 Service account JSON written to /tmp/gdrive_service_account.json")
-    except Exception as e:
-        print("❌ Failed to write service account JSON:", e)
-else:
-    print("⚠️ No GDRIVE_SERVICE_ACCOUNT_JSON env variable found — Drive upload disabled")
-
+SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 
 api = Api(AIRTABLE_API_KEY)
 
-# ============= GOOGLE DRIVE HELPERS =============
+
+# ============= GOOGLE DRIVE HELPERS (OAuth) =============
 def get_drive_client():
-    if not os.path.exists(SERVICE_ACCOUNT_PATH):
-        print("⚠️ Skipping Drive upload: service account file missing")
+    """
+    Returns an authenticated Drive client using OAuth user credentials
+    stored in the GDRIVE_OAUTH_TOKEN_JSON env var.
+    """
+    if not OAUTH_TOKEN_JSON:
+        print("⚠️ No GDRIVE_OAUTH_TOKEN_JSON set — skipping Drive upload")
         return None
 
     try:
-        scopes = ["https://www.googleapis.com/auth/drive.file"]
-        creds = service_account.Credentials.from_service_account_file(
-            SERVICE_ACCOUNT_PATH, scopes=scopes
-        )
+        info = json.loads(OAUTH_TOKEN_JSON)
+        creds = Credentials.from_authorized_user_info(info, scopes=SCOPES)
+
+        # If the token is expired but has a refresh token, it will auto-refresh
+        # when used by the Google API client.
         return build("drive", "v3", credentials=creds)
     except Exception as e:
-        print(f"❌ Failed to create Drive client: {e}")
+        print(f"❌ Failed to create Drive client from OAuth token: {e}")
         return None
 
 
 def upload_pdf_to_drive(pdf_path: str, folder_id: str = DRIVE_FOLDER_ID):
+    """
+    Uploads PDF to Google Drive folder using OAuth credentials.
+    """
     drive = get_drive_client()
     if not drive:
         return None
@@ -91,7 +90,10 @@ def upload_pdf_to_drive(pdf_path: str, folder_id: str = DRIVE_FOLDER_ID):
         print(f"⚠️ File not found, skipping Drive upload: {pdf_path}")
         return None
 
-    metadata = {"name": os.path.basename(pdf_path), "parents": [folder_id]}
+    metadata = {
+        "name": os.path.basename(pdf_path),
+        "parents": [folder_id],
+    }
     media = MediaFileUpload(pdf_path, mimetype="application/pdf")
 
     try:
