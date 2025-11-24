@@ -156,7 +156,7 @@ async def get_contractors():
             fields = record.get('fields', {})
             
             # Extract email - it's in the "Email (from Communit..." field
-            email_field = fields.get('Email (from Communit...', [])
+            email_field = fields.get('Email (from Community Member)', [])
             email = email_field[0] if email_field else ""
             
             # Extract rate/amount from Rate Formula field
