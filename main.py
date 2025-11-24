@@ -47,6 +47,13 @@ AIRTABLE_TABLE_2 = os.getenv("AIRTABLE_TABLE_2")
 # table 3 = Purchase Orders (Balance reduce)
 AIRTABLE_TABLE_3 = os.getenv("AIRTABLE_TABLE_3")
 
+
+# Community Leaders table for contract generation dropdown
+# Using the correct table ID from your Airtable URL
+COMMUNITY_LEADERS_BASE = "app7924YTWUI9YhMK"
+COMMUNITY_LEADERS_TABLE = "tbl5Tl74DBlHg2805"
+
+
 # Google Drive OAuth config
 DRIVE_FOLDER_ID = os.getenv("GDRIVE_FOLDER_ID", "1eKDgZvxW8lecck_CiqdDWVWOmiZjFNry")
 OAUTH_TOKEN_JSON = os.getenv("GDRIVE_OAUTH_TOKEN_JSON")  # contents of token.json
@@ -131,6 +138,49 @@ def download_temp_pdf(url: str):
 @app.get("/")
 def home():
     return {"status": "ok", "message": "Backend running"}
+
+# ============= CONTRACTORS ENDPOINT FOR DROPDOWN =============
+@app.get("/contractors")
+async def get_contractors():
+    """
+    Fetch all contractors from Community Leaders table for contract generation dropdown
+    """
+    try:
+        print("📋 Fetching contractors from Airtable...")
+        table = api.table(COMMUNITY_LEADERS_BASE, COMMUNITY_LEADERS_TABLE)
+        records = table.all()
+        
+        # Transform records to simplified format
+        contractors = []
+        for record in records:
+            fields = record.get('fields', {})
+            
+            # Extract email - it's in the "Email (from Communit..." field
+            email_field = fields.get('Email (from Communit...', [])
+            email = email_field[0] if email_field else ""
+            
+            # Extract rate/amount from Rate Formula field
+            rate_formula = fields.get('Rate Formula', '')
+            # Convert "$3,000.00" to "3000"
+            amount = rate_formula.replace('$', '').replace(',', '').strip() if rate_formula else ""
+            
+            contractor = {
+                'id': record['id'],
+                'summary': fields.get('Summary', ''),
+                'email': email,
+                'date': fields.get('Date', ''),
+                'status': fields.get('Status', ''),
+                'po': fields.get('PO', ''),
+                'amount': amount,
+            }
+            contractors.append(contractor)
+        
+        print(f"✅ Found {len(contractors)} contractors")
+        return {"status": "success", "contractors": contractors}
+    
+    except Exception as e:
+        print("❌ Error fetching contractors:", e)
+        return {"status": "error", "message": str(e)}
 
 
 # ============= CREATE CONTRACT =============
