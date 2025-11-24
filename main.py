@@ -161,8 +161,14 @@ async def get_contractors():
             
             # Extract rate/amount from Rate Formula field
             rate_formula = fields.get('Rate Formula', '')
-            # Convert "$3,000.00" to "3000"
-            amount = rate_formula.replace('$', '').replace(',', '').strip() if rate_formula else ""
+            if isinstance(rate_formula, (int, float)):
+                # If it's already a number, just convert to string
+                amount = str(rate_formula)
+            elif isinstance(rate_formula, str):
+                # If it's a string like "$3,000.00", clean it up
+                amount = rate_formula.replace('$', '').replace(',', '').strip()
+            else:
+                amount = ""
             
             contractor = {
                 'id': record['id'],
