@@ -215,15 +215,19 @@ async def create_contract(request: Request):
 
         drive_file = upload_pdf_to_drive(pdf_path)
 
-        return {
-            "status": "success",
-            "file_path": pdf_path,
-            "drive_file": drive_file,
-        }
+        if not os.path.exists(pdf_path):
+            raise HTTPException(status_code=404, detail="PDF not found")
+        
+        filename = os.path.basename(pdf_path)
+        return FileResponse(
+            pdf_path, 
+            media_type="application/pdf",
+            filename=filename
+        )
 
     except Exception as e:
         print("❌ Error generating contract:", e)
-        return {"status": "error", "message": str(e)}
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/download-contract")
