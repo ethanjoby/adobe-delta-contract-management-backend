@@ -209,19 +209,20 @@ async def create_contract(request: Request):
         if not record:
             return {"error": "No record data provided"}
 
-        pdf_path = generate_contract(record)
+        docx_path = generate_contract(record)
         contractor = record.get("contractor_name", "Unknown contractor")
-        print(f"✅ Contract generated for {contractor}: {pdf_path}")
+        print(f"✅ Contract generated for {contractor}: {docx_path}")
 
-        drive_file = upload_pdf_to_drive(pdf_path)
+        # Upload to Google Drive (works with docx files too)
+        drive_file = upload_pdf_to_drive(docx_path)
 
-        if not os.path.exists(pdf_path):
-            raise HTTPException(status_code=404, detail="PDF not found")
+        if not os.path.exists(docx_path):
+            raise HTTPException(status_code=404, detail="Contract file not found")
         
-        filename = os.path.basename(pdf_path)
+        filename = os.path.basename(docx_path)
         return FileResponse(
-            pdf_path, 
-            media_type="application/pdf",
+            docx_path, 
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             filename=filename
         )
 

@@ -1,5 +1,12 @@
 {
+  "name": "adobe-contract-generator",
+  "version": "1.0.0",
+  "description": "Word document contract generator using docx library",
+  "main": "generate_contract.js",
+  "scripts": {
+    "test": "node generate_contract.js '{\"contractor_name\":\"Test User\",\"signer_name\":\"\",\"relationship_to_vendor\":\"Self\",\"address\":\"123 Main St\",\"email\":\"test@example.com\",\"vendor_account\":\"Needed\",\"service\":\"Video\",\"amount\":\"5000\",\"due_date\":\"Dec 31, 2025\",\"end_date\":\"Dec 31, 2025\",\"number_of_content\":\"3\",\"contract_type\":\"regular\",\"po\":\"\"}' test_contract.docx"
+  },
   "dependencies": {
-    "fastapi": "^0.0.8"
+    "docx": "^8.5.0"
   }
 }
