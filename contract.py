@@ -9,18 +9,18 @@ GENERATED_CONTRACTS_DIR = os.path.join(BASE_DIR, "generated_contracts")
 
 os.makedirs(GENERATED_CONTRACTS_DIR, exist_ok=True)
 
-# Number to words conversion
+# Number to words conversion - just the final number
 NUMBER_TO_WORDS = {
     1: "one (1)",
-    2: "one (1) / two (2)",
-    3: "one (1) / two (2) / three (3)",
-    4: "one (1) / two (2) / three (3) / four (4)",
-    5: "one (1) / two (2) / three (3) / four (4) / five (5)",
-    6: "one (1) / two (2) / three (3) / four (4) / five (5) / six (6)",
-    7: "one (1) / two (2) / three (3) / four (4) / five (5) / six (6) / seven (7)",
-    8: "one (1) / two (2) / three (3) / four (4) / five (5) / six (6) / seven (7) / eight (8)",
-    9: "one (1) / two (2) / three (3) / four (4) / five (5) / six (6) / seven (7) / eight (8) / nine (9)",
-    10: "one (1) / two (2) / three (3) / four (4) / five (5) / six (6) / seven (7) / eight (8) / nine (9) / ten (10)"
+    2: "two (2)",
+    3: "three (3)",
+    4: "four (4)",
+    5: "five (5)",
+    6: "six (6)",
+    7: "seven (7)",
+    8: "eight (8)",
+    9: "nine (9)",
+    10: "ten (10)"
 }
 
 def convert_number_to_words(num):
